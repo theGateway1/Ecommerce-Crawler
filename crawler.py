@@ -4,9 +4,9 @@ import asyncio
 import os
 from urllib.parse import urlparse
 SEMAPHORE_LIMIT = 10  #Limit number of concurrent tasks to 10
-MAX_PRODUCT_URLS_PER_SEED_URL = 20
+MAX_PRODUCT_URLS_PER_SEED_URL = 2
 import aiofiles
-site_urls = ['https://www.zara.com', 'https://www.westside.com', 'https://nefsfinds.com', 'https://outcasts.in', 'https://freakins.com', 'https://selcouth.co.in', 'https://www.houseofsal.com', 'https://www.virgio.com', 'https://lazostore.in', 'https://tagthelabel.in', 'https://blushade.in', 'https://girlsdontdressforboys.com', 'https://www.summersomewhereshop.com', 'https://sagebymala.com', 'https://thehouseofrare.com', 'https://www.snitch.co.in', 'https://www.bonkerscorner.com', 'https://crayyheads.com', 'https://offduty.in']
+seed_urls = ['https://www.zara.com', 'https://www.westside.com', 'https://nefsfinds.com', 'https://outcasts.in', 'https://freakins.com', 'https://selcouth.co.in', 'https://www.houseofsal.com', 'https://www.virgio.com', 'https://lazostore.in', 'https://tagthelabel.in', 'https://blushade.in', 'https://girlsdontdressforboys.com', 'https://www.summersomewhereshop.com', 'https://sagebymala.com', 'https://thehouseofrare.com', 'https://www.snitch.co.in', 'https://www.bonkerscorner.com', 'https://offduty.in']
 
 #Filter external site links 
 def is_valid_link(site_url, full_url):
@@ -84,7 +84,7 @@ async def load_category_links_dynamically(page, category_links, site_url):
                     await extract_category_urls(elements, category_links, site_url, dialog_box)
                     
             except Exception as e:
-                print(f"Skipping item due to error: {e}")
+                print(f"Skipping {site_url} due to error: {e}")
             
 
 def convert_to_json():
@@ -171,13 +171,28 @@ async def extract_product_urls(site_url, browser, max_scrolls=5, semaphore=None)
             print(f"Error processing {site_url}: {e}")
             return []
 
-async def main(site_urls):
+async def main(seed_urls):
     try:
         semaphore = asyncio.Semaphore(SEMAPHORE_LIMIT)  # Limit concurrent tasks
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
-            context = await browser.new_context()  # Use a single shared context (a single browser instance)
-        
+            # browser = await p.chromium.launch(headless=True)
+            # context = await browser.new_context()  # Use a single shared context (a single browser instance)
+
+            browser = await p.chromium.launch(
+                headless=True,  # Keep headless mode on
+                args=[
+                    "--disable-blink-features=AutomationControlled",  # Prevents detection
+                    "--disable-infobars",  # Removes automation flags
+                    "--no-sandbox",  # Helps prevent sandboxing issues
+                    "--disable-dev-shm-usage"  # Prevents crashes in Docker environments
+                ]
+            )
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                viewport={"width": 1280, "height": 800},  # Mimic a real user screen
+                java_script_enabled=True,  # Ensure JS content loads
+            )
+
             async def process_url(url):
                 product_urls = await extract_product_urls(url, context, 5, semaphore=semaphore)
                 output = {url: product_urls}
@@ -188,7 +203,7 @@ async def main(site_urls):
                 print(f"Saved {len(product_urls)} product URLs for {url}")
 
             # Run all tasks concurrently with asyncio.gather
-            tasks = [process_url(url) for url in site_urls]
+            tasks = [process_url(url) for url in seed_urls]
             await asyncio.gather(*tasks)
             
             await browser.close()
@@ -200,4 +215,4 @@ async def main(site_urls):
         print(f"Error occured: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(main(site_urls))
+    asyncio.run(main(seed_urls))
