@@ -75,7 +75,7 @@ async def load_category_links_dynamically(page, category_links, site_url):
                 await asyncio.sleep(2)  # Allow dropdown to appear
 
                 if await item.is_enabled():
-                    dialog_box = await page.query_selector("div[role='dialog'], ul.dropdown, div.menu")  # Adjust selector as needed
+                    dialog_box = await page.query_selector("div[role='dialog'], ul.dropdown, div.menu") 
                     if dialog_box:
                         elements = await dialog_box.query_selector_all("a")  # Select only links inside this box
                     else:
@@ -176,7 +176,7 @@ async def main(site_urls):
         semaphore = asyncio.Semaphore(SEMAPHORE_LIMIT)  # Limit concurrent tasks
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=False)
-            context = await browser.new_context()  # Use a single shared context
+            context = await browser.new_context()  # Use a single shared context (a single browser instance)
         
             async def process_url(url):
                 product_urls = await extract_product_urls(url, context, 5, semaphore=semaphore)
