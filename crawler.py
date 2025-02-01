@@ -2,6 +2,8 @@ from playwright.async_api import async_playwright
 import json
 import asyncio
 from urllib.parse import urlparse
+SEMAPHORE_LIMIT = 10  #Limit number of concurrent tasks to 10
+
 
 #Filter external site links 
 def is_valid_link(site_url, full_url):
@@ -79,66 +81,74 @@ async def load_category_links_dynamically(page, category_links, site_url):
                 print(f"Skipping item due to error: {e}")  # Debugging message
             
 
-async def extract_product_urls(site_url, max_scrolls=5):
-    async with async_playwright() as p:
-        #TODO: Set headless to True
-        browser = await p.chromium.launch(headless=False)  # Set to True for headless mode
-        page = await browser.new_page()
-        await page.goto(site_url, timeout=60000)
-        await asyncio.sleep(5)  # Allow time for page elements to load
-        
-        # Step 1: Handle popups like cookie consent and notifications
+async def extract_product_urls(site_url, max_scrolls=5, semaphore=None):
+    async with semaphore:  # Limit concurrency    
         try:
-            accept_buttons = await page.query_selector_all("button")  # Select all buttons
-            for button in accept_buttons:
-                button_text = (await button.inner_text()).strip().lower()
-                if "accept" in button_text or "agree" in button_text or "allow" in button_text or "go" in button_text:
-                    await button.click()
-                    await asyncio.sleep(2)  # Give time for popup to close
-        except:
-            print("No cookie or notification popup detected.")
+            async with async_playwright() as p:
+                #TODO: Set headless to True
+                browser = await p.chromium.launch(headless=True)  # Set to True for headless mode
+                page = await browser.new_page()
+                await page.goto(site_url, timeout=60000)
+                await asyncio.sleep(5)  # Allow time for page elements to load
+                
+                # Step 1: Handle popups like cookie consent and notifications
+                try:
+                    accept_buttons = await page.query_selector_all("button")  # Select all buttons
+                    for button in accept_buttons:
+                        button_text = (await button.inner_text()).strip().lower()
+                        if "accept" in button_text or "agree" in button_text or "allow" in button_text or "go" in button_text:
+                            await button.click()
+                            await asyncio.sleep(2)  # Give time for popup to close
+                except:
+                    print("No cookie or notification popup detected.")
+                
+                elements = await page.query_selector_all("a")  # Select all anchor tags
+
+                # Step 2: Get product links present on seed URL
+                product_urls = set()
+                await extract_product_urls_helper(elements, product_urls, page, site_url, True)
+
+                # Step 3: Get category links present on seed URL
+                category_links = set()
+                await extract_category_urls(elements, category_links, site_url)
+
+                # Step 4: Additional category links might be loaded dynamically (clicking/hovering)
+                await load_category_links_dynamically(page, category_links, site_url)
+
+                #Step 5: At this point, if both category_links and product_links is empty, this site is most probably not an ecommerce site
+                if(len(product_urls) == 0 and len(category_links) == 0):
+                    return []
+            
+                # Step 6: Visit each category and extract product links
+                for category_url in category_links:
+                    print(f"Visiting category: {category_url}")
+                    await page.goto(category_url, timeout=60000)
+                    await asyncio.sleep(5)  # Allow page to load
+                    
+                    # Handle infinite scrolling
+                    for _ in range(max_scrolls):
+                        await page.mouse.wheel(0, 2000)  # Scroll down
+                        await asyncio.sleep(5)  # Wait for new products to load
+                    
+                    # Extract product links
+                    await extract_product_urls_helper(await page.query_selector_all("a"), product_urls, page, site_url)
+                    print(product_urls)
+
+                    #TODO: Remove this
+                    if(len(product_urls) >= 30):
+                        break
+                await browser.close()
         
-        elements = await page.query_selector_all("a")  # Select all anchor tags
-
-        # Step 2: Get product links present on seed URL
-        product_urls = set()
-        await extract_product_urls_helper(elements, product_urls, page, site_url, True)
-
-        # Step 3: Get category links present on seed URL
-        category_links = set()
-        await extract_category_urls(elements, category_links, site_url)
-
-        # Step 4: Additional category links might be loaded dynamically (clicking/hovering)
-        await load_category_links_dynamically(page, category_links, site_url)
-
-        #Step 5: At this point, if both category_links and product_links is empty, this site is most probably not an ecommerce site
-        if(len(product_urls) == 0 and len(category_links) == 0):
+            return list(product_urls)
+        except Exception as e:
+            print(f"Error processing {site_url}: {e}")
             return []
-    
-        # Step 6: Visit each category and extract product links
-        for category_url in category_links:
-            print(f"Visiting category: {category_url}")
-            await page.goto(category_url, timeout=60000)
-            await asyncio.sleep(5)  # Allow page to load
-            
-            # Handle infinite scrolling
-            for _ in range(max_scrolls):
-                await page.mouse.wheel(0, 2000)  # Scroll down
-                await asyncio.sleep(5)  # Wait for new products to load
-            
-            # Extract product links
-            await extract_product_urls_helper(await page.query_selector_all("a"), product_urls, page, site_url)
-            print(product_urls)
-
-            #TODO: Remove this
-            if(len(product_urls) >= 30):
-                break
-        await browser.close()
-    
-    return list(product_urls)
 
 async def main(site_urls):
-    results = await asyncio.gather(*[extract_product_urls(url) for url in site_urls])
+    semaphore = asyncio.Semaphore(SEMAPHORE_LIMIT)  # Limit concurrent tasks
+    tasks = [extract_product_urls(url, semaphore=semaphore) for url in site_urls]
+
+    results = await asyncio.gather(*tasks)
     
     output = {url: result for url, result in zip(site_urls, results)}
     
@@ -148,7 +158,7 @@ async def main(site_urls):
     print("Extraction complete. Results saved to product_urls.json")
 
 if __name__ == "__main__":
-    site_urls = ["https://zara.com"]  
+    site_urls = ["https://zara.com", "https://westside.com", "https://sagebymala.com/"]  
     asyncio.run(main(site_urls))
 
 # if __name__ == "__main__":
