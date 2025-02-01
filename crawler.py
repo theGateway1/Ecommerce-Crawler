@@ -54,7 +54,7 @@ async def extract_product_urls_helper(elements, product_urls, page, site_url, se
 
 
 # Get category links that are loaded dynamically (clicking/hovering)
-async def load_category_links_dynamically(page, category_links):
+async def load_category_links_dynamically(page, category_links, site_url):
     category_items = await page.query_selector_all("li")  # Select all list item elements
     for item in category_items:
         item_text = (await item.inner_text()).strip().lower()
@@ -109,7 +109,7 @@ async def extract_product_urls(site_url, max_scrolls=5):
         await extract_category_urls(elements, category_links, site_url)
 
         # Step 4: Additional category links might be loaded dynamically (clicking/hovering)
-        await load_category_links_dynamically(page, category_links)
+        await load_category_links_dynamically(page, category_links, site_url)
 
         #Step 5: At this point, if both category_links and product_links is empty, this site is most probably not an ecommerce site
         if(len(product_urls) == 0 and len(category_links) == 0):
@@ -137,21 +137,35 @@ async def extract_product_urls(site_url, max_scrolls=5):
     
     return list(product_urls)
 
+async def main(site_urls):
+    results = await asyncio.gather(*[extract_product_urls(url) for url in site_urls])
+    
+    output = {url: result for url, result in zip(site_urls, results)}
+    
+    with open("product_urls.json", "w") as f:
+        json.dump(output, f, indent=4)
+    
+    print("Extraction complete. Results saved to product_urls.json")
+
 if __name__ == "__main__":
-    site_url = "https://zara.com"  
-    product_links = asyncio.run(extract_product_urls(site_url))
+    site_urls = ["https://zara.com"]  
+    asyncio.run(main(site_urls))
+
+# if __name__ == "__main__":
+#     site_url = "https://zara.com"  
+#     product_links = asyncio.run(extract_product_urls(site_url))
     
-    # Save results
-    # with open("product_urls.json", "w") as f:
-    #     json.dump(product_links, f, indent=4)
+#     # Save results
+#     # with open("product_urls.json", "w") as f:
+#     #     json.dump(product_links, f, indent=4)
 
-    with open("product_links.txt", "w") as f:
-        for link in product_links:
-            f.write(link + "\n")
+#     with open("product_links.txt", "w") as f:
+#         for link in product_links:
+#             f.write(link + "\n")
     
-    print(f"Extracted {len(product_links)} product URLs. Saved to product_urls.txt")
+#     print(f"Extracted {len(product_links)} product URLs. Saved to product_urls.txt")
 
 
-#TODO:
-#1. Support multiple URLs given at once - parallelly
-#2. Visit product page and get URLs of products on that page
+# #TODO:
+# #1. Support multiple URLs given at once - parallelly
+# #2. Visit product page and get URLs of products on that page
