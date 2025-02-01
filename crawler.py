@@ -1,10 +1,12 @@
 from playwright.async_api import async_playwright
 import json
 import asyncio
+import os
 from urllib.parse import urlparse
 SEMAPHORE_LIMIT = 10  #Limit number of concurrent tasks to 10
 MAX_PRODUCT_URLS_PER_SEED_URL = 20
 import aiofiles
+site_urls = ['https://www.zara.com', 'https://www.westside.com', 'https://nefsfinds.com', 'https://outcasts.in', 'https://freakins.com', 'https://selcouth.co.in', 'https://www.houseofsal.com', 'https://www.virgio.com', 'https://lazostore.in', 'https://tagthelabel.in', 'https://blushade.in', 'https://girlsdontdressforboys.com', 'https://www.summersomewhereshop.com', 'https://sagebymala.com', 'https://thehouseofrare.com', 'https://www.snitch.co.in', 'https://www.bonkerscorner.com', 'https://crayyheads.com', 'https://offduty.in']
 
 #Filter external site links 
 def is_valid_link(site_url, full_url):
@@ -85,6 +87,31 @@ async def load_category_links_dynamically(page, category_links, site_url):
                 print(f"Skipping item due to error: {e}")
             
 
+def convert_to_json():
+    try:
+        jsonl_file = "product_urls.jsonl"
+        json_file = "product_urls.json"
+
+        # Read JSONL and convert to a structured JSON object
+        data = []
+
+        with open(jsonl_file, "r") as f:
+            for line in f:
+                data.append(json.loads(line.strip()))  # Load each line as a JSON object
+
+        # Convert the list of JSON objects into a single structured dictionary
+        merged_data = {key: value for entry in data for key, value in entry.items()}
+
+        # Save as JSON
+        with open(json_file, "w") as f:
+            json.dump(merged_data, f, indent=4)
+        
+        os.remove(jsonl_file)
+
+    except Exception as e:
+        print(f"Error occured {e}")
+
+
 async def extract_product_urls(site_url, browser, max_scrolls=5, semaphore=None):
     async with semaphore:  # Limit concurrency    
         try:
@@ -145,28 +172,32 @@ async def extract_product_urls(site_url, browser, max_scrolls=5, semaphore=None)
             return []
 
 async def main(site_urls):
-    semaphore = asyncio.Semaphore(SEMAPHORE_LIMIT)  # Limit concurrent tasks
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context()  # Use a single shared context
-    
-        async def process_url(url):
-            product_urls = await extract_product_urls(url, context, 5, semaphore=semaphore)
-            output = {url: product_urls}
-            
-            # Append to file immediately after fetching URLs for a seed URL
-            async with aiofiles.open("product_urls.jsonl", "a") as f:
-                await f.write(json.dumps(output) + "\n")
-            print(f"Saved {len(product_urls)} product URLs for {url}")
-
-        # Run all tasks concurrently with asyncio.gather
-        tasks = [process_url(url) for url in site_urls]
-        await asyncio.gather(*tasks)
+    try:
+        semaphore = asyncio.Semaphore(SEMAPHORE_LIMIT)  # Limit concurrent tasks
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=False)
+            context = await browser.new_context()  # Use a single shared context
         
-        await browser.close()
-    print("Extraction complete. Results saved to product_urls.json")
+            async def process_url(url):
+                product_urls = await extract_product_urls(url, context, 5, semaphore=semaphore)
+                output = {url: product_urls}
+                
+                # Append to file immediately after fetching URLs for a seed URL
+                async with aiofiles.open("product_urls.jsonl", "a") as f:
+                    await f.write(json.dumps(output) + "\n")
+                print(f"Saved {len(product_urls)} product URLs for {url}")
+
+            # Run all tasks concurrently with asyncio.gather
+            tasks = [process_url(url) for url in site_urls]
+            await asyncio.gather(*tasks)
+            
+            await browser.close()
+        print("Extraction complete. Converting file to JSON")
+        convert_to_json()
+        print("Operation complete. Results saved to product_urls.json")
+
+    except Exception as e:
+        print(f"Error occured: {e}")
 
 if __name__ == "__main__":
-    site_urls = ['https://www.westside.com', 'https://nefsfinds.com', 'https://outcasts.in', 'https://freakins.com', 'https://selcouth.co.in', 'https://www.houseofsal.com', 'https://www.virgio.com', 'https://lazostore.in', 'https://tagthelabel.in', 'https://blushade.in', 'https://girlsdontdressforboys.com', 'https://www.summersomewhereshop.com', 'https://sagebymala.com', 'https://thehouseofrare.com', 'https://www.selectedhomme.in', 'https://www.snitch.co.in', 'https://www.bonkerscorner.com', 'https://crayyheads.com', 'https://offduty.in']
-
     asyncio.run(main(site_urls))
