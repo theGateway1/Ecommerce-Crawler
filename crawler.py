@@ -4,7 +4,7 @@ import asyncio
 import os
 from urllib.parse import urlparse
 SEMAPHORE_LIMIT = 10  #Limit number of concurrent tasks to 10
-MAX_PRODUCT_URLS_PER_SEED_URL = 2
+MAX_PRODUCT_URLS_PER_SEED_URL = 20
 import aiofiles
 seed_urls = ['https://www.zara.com', 'https://www.westside.com', 'https://nefsfinds.com', 'https://outcasts.in', 'https://freakins.com', 'https://selcouth.co.in', 'https://www.houseofsal.com', 'https://www.virgio.com', 'https://lazostore.in', 'https://tagthelabel.in', 'https://blushade.in', 'https://girlsdontdressforboys.com', 'https://www.summersomewhereshop.com', 'https://sagebymala.com', 'https://thehouseofrare.com', 'https://www.snitch.co.in', 'https://www.bonkerscorner.com', 'https://offduty.in']
 
@@ -175,16 +175,14 @@ async def main(seed_urls):
     try:
         semaphore = asyncio.Semaphore(SEMAPHORE_LIMIT)  # Limit concurrent tasks
         async with async_playwright() as p:
-            # browser = await p.chromium.launch(headless=True)
-            # context = await browser.new_context()  # Use a single shared context (a single browser instance)
-
+            # These settings try to prevent bot detection
             browser = await p.chromium.launch(
-                headless=True,  # Keep headless mode on
+                headless=True, 
                 args=[
                     "--disable-blink-features=AutomationControlled",  # Prevents detection
-                    "--disable-infobars",  # Removes automation flags
-                    "--no-sandbox",  # Helps prevent sandboxing issues
-                    "--disable-dev-shm-usage"  # Prevents crashes in Docker environments
+                    "--disable-infobars",  # Remove automation flags
+                    "--no-sandbox", 
+                    "--disable-dev-shm-usage"  
                 ]
             )
             context = await browser.new_context(
