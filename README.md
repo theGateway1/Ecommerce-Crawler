@@ -1,5 +1,5 @@
 # E-Commerce Product Crawler
-This crawler is designed to extract product URLs from e-commerce websites. It leverages Playwright for asynchronous web scraping and efficiently handles various website structures. The scraper follows a structured approach to detect product links, ensuring scalability, robustness, and performance.
+This crawler is designed to extract product URLs from e-commerce websites. It leverages Playwright for asynchronous web scraping and efficiently handles various website structures. The crawler follows a structured approach to detect product links, ensuring scalability and optimized resource usage. [View Demo](https://www.loom.com/share/71ada74971a7481888d95f191b3d996d?sid=e3a0620f-bd36-4e84-8f74-9dcc13c043e1)
 
 ## Product Link Detection
 The crawler follows a 5 step process to identify product URLs, and deals with the situation where home page (seed URL) only contains catalogue links.
